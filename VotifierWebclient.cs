@@ -6,30 +6,19 @@ namespace fr34kyn01535.Votifier
     public class VotifierWebclient : WebClient
     {
         //time in milliseconds
-        private int timeout;
-        public int Timeout
-        {
-            get
-            {
-                return timeout;
-            }
-            set
-            {
-                timeout = value;
-            }
-        }
+        public int Timeout { get; private set; }
 
         public VotifierWebclient(int timeout = 5000)
         {
-            this.timeout = timeout;
+            Timeout = timeout;
         }
 
         protected override WebRequest GetWebRequest(Uri address)
         {
             var result = base.GetWebRequest(address);
-            result.Timeout = this.timeout;
+            if (result != null)
+                result.Timeout = Timeout;
             return result;
         }
     }
-
 }

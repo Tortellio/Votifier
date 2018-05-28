@@ -1,47 +1,49 @@
-﻿using Rocket.API;
-using Rocket.API.Collections;
-using Rocket.Core.Logging;
+﻿using Rocket.Core.Logging;
 using Rocket.Core.Plugins;
-using Rocket.Unturned;
-using Rocket.Unturned.Chat;
 using Rocket.Unturned.Player;
-using SDG.Unturned;
-using Steamworks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using fr34kyn01535.Votifier.Config;
+using Rocket.API.DependencyInjection;
+using Rocket.API.Eventing;
+using Rocket.API.Scheduler;
+using Rocket.API.User;
+using Rocket.Core.I18N;
+using Rocket.Core.Player.Events;
 
 namespace fr34kyn01535.Votifier
 {
-    public class Votifier : RocketPlugin<VotifierConfiguration>
+    public class Votifier : Plugin<VotifierConfiguration>, IEventListener<PlayerConnectedEvent>
     {
-        public static Votifier Instance;
-        protected override void Load()
+        private readonly IUserManager _proxiedUserManager;
+        private readonly ITaskScheduler _scheduler;
+        private readonly Queue<VoteResult> _queue;
+
+        private ITask _updateTask;
+
+        public Votifier(IDependencyContainer container, IUserManager proxiedUserManager, ITaskScheduler scheduler) : base("Votifier", container)
         {
-            Instance = this;
-            U.Events.OnPlayerConnected += voteTrigger;
-            if (Configuration.Instance.EnableRewardBundles)
-            {
-                OnPlayerVoted += Votifier_OnPlayerVoted;
-            }
+            _proxiedUserManager = proxiedUserManager;
+            _scheduler = scheduler;
+            _queue = new Queue<VoteResult>();
         }
-        
-        private void voteTrigger(UnturnedPlayer player){
-                Vote(player, false);
-        }
-        
-        protected override void Unload()
+
+        protected override void OnLoad(bool isFromReload)
         {
-            U.Events.OnPlayerConnected -= voteTrigger;
-            if (Configuration.Instance.EnableRewardBundles)
-            {
-                OnPlayerVoted -= Votifier_OnPlayerVoted;
-            }
+            base.OnLoad(isFromReload);
+            EventManager.AddEventListener(this, this);
+            _updateTask = _scheduler.ScheduleEveryAsyncFrame(this, UpdateTask);
+        }
+
+        protected override void OnUnload()
+        {
+            _updateTask?.Cancel();
         }
 
         void Votifier_OnPlayerVoted(UnturnedPlayer player, ServiceDefinition definition)
         {
-            int propabilysum = Instance.Configuration.Instance.RewardBundles.Sum(p => p.Probability);
+            int propabilysum = ConfigurationInstance.RewardBundles.Sum(p => p.Probability);
 
             RewardBundle bundle = new RewardBundle();
 
@@ -51,7 +53,7 @@ namespace fr34kyn01535.Votifier
 
                 int i = 0, diceRoll = r.Next(0, propabilysum);
 
-                foreach (RewardBundle b in Instance.Configuration.Instance.RewardBundles)
+                foreach (RewardBundle b in ConfigurationInstance.RewardBundles)
                 {
                     if (diceRoll > i && diceRoll <= i + b.Probability)
                     {
@@ -63,138 +65,142 @@ namespace fr34kyn01535.Votifier
             }
             else
             {
-                Logger.Log(Instance.Translations.Instance.Translate("no_rewards_found"));
+                Logger.LogWarning(Translations.Get("no_rewards_found"));
                 return;
             }
 
             foreach (Reward reward in bundle.Rewards)
             {
-                
+
                 if (!player.GiveItem(reward.ItemId, reward.Amount))
                 {
-                    Logger.Log(Instance.Translations.Instance.Translate("vote_give_error_message", player.CharacterName, reward.ItemId, reward.Amount));
+                    Logger.LogError(Translations.Get("vote_give_error_message", player.CharacterName, reward.ItemId, reward.Amount));
                 }
             }
-            UnturnedChat.Say(Instance.Translations.Instance.Translate("vote_success_message", player.CharacterName, definition.Name, bundle.Name));        
+
+            _proxiedUserManager.BroadcastLocalized(Translations, "vote_success_message", player.CharacterName, definition.Name, bundle.Name);
         }
 
-        public delegate void PlayerVotedEvent(UnturnedPlayer player, ServiceDefinition definition);
-        public event PlayerVotedEvent OnPlayerVoted;
-
-        public override TranslationList DefaultTranslations
+        public override Dictionary<string, string> DefaultTranslations => new Dictionary<string, string>
         {
-            get
-            {
-                return new TranslationList() { 
-                    {"no_apikeys_message","No apikeys supplied."},
-                    {"api_unknown_message", "The API for {0} is unknown"},
-                    {"api_down_message","Can't reach {0}, is it down?!"},
-                    {"not_yet_voted","You have not yet voted for this server on: {0}"},
-                    {"no_rewards_found","Failed finding any rewardbundles"},
-                    {"vote_give_error_message","Failed giving a item to {0} ({1},{2})"},
-                    {"vote_success_message","{0} voted on {1} and received the \"{2}\" bundle"},
-                    {"vote_pending_message","You have an outstanding reward for your vote on {0}"},
-                    {"vote_due_message","You have already voted for this server on {0}, Thanks!"}
-                };
-            }
-        }
-        
-        public static void Vote(UnturnedPlayer caller,bool giveItemDirectly = true)
+            {"no_apikeys_message","No apikeys supplied."},
+            {"api_unknown_message", "The API for {0} is unknown"},
+            {"api_down_message","Can't reach {0}, is it down?!"},
+            {"not_yet_voted","You have not yet voted for this server on: {0}"},
+            {"no_rewards_found","Failed finding any rewardbundles"},
+            {"vote_give_error_message","Failed giving a item to {0} ({1},{2})"},
+            {"vote_success_message","{0} voted on {1} and received the \"{2}\" bundle"},
+            {"vote_pending_message","You have an outstanding reward for your vote on {0}"},
+            {"vote_due_message","You have already voted for this server on {0}, Thanks!"}
+        };
+
+        public void Vote(UnturnedPlayer caller, bool giveItemDirectly = true)
         {
             try
             {
-                if (Instance.Configuration.Instance.Services.Where(s => !String.IsNullOrEmpty(s.APIKey)).FirstOrDefault() == null)
+                if (ConfigurationInstance.Services.FirstOrDefault(s => !String.IsNullOrEmpty(s.APIKey)) == null)
                 {
-                    Logger.Log(Instance.Translations.Instance.Translate("no_apikeys_message")); return;
+                    Logger.LogError(Translations.Get("no_apikeys_message")); return;
                 }
 
-                List<Service> services = Instance.Configuration.Instance.Services.Where(s => !String.IsNullOrEmpty(s.APIKey)).ToList();
+                List<Service> services = ConfigurationInstance.Services.Where(s => !String.IsNullOrEmpty(s.APIKey)).ToList();
 
 
                 foreach (Service service in services)
                 {
-                    ServiceDefinition apidefinition = Instance.Configuration.Instance.ServiceDefinitions.Where(s => s.Name == service.Name).FirstOrDefault();
-                    if (apidefinition == null) { Logger.Log(Instance.Translations.Instance.Translate("api_unknown_message", service.Name)); return; }
+                    ServiceDefinition apiDefinition = ConfigurationInstance.ServiceDefinitions.FirstOrDefault(s => s.Name == service.Name);
+                    if (apiDefinition == null)
+                    {
+                        Logger.LogWarning(Translations.Get("api_unknown_message", service.Name)); return;
+                    }
                     try
                     {
                         VotifierWebclient wc = new VotifierWebclient();
-                        wc.DownloadStringCompleted += (sender, e) => wc_DownloadStringCompleted(e, caller, service,apidefinition, giveItemDirectly);
-                        wc.DownloadStringAsync(new Uri(String.Format(apidefinition.CheckHasVoted, service.APIKey, caller.ToString())));
+                        wc.DownloadStringCompleted += (sender, e) => OnDownloadStringCompleted(e, caller, service, apiDefinition, giveItemDirectly);
+                        wc.DownloadStringAsync(new Uri(String.Format(apiDefinition.CheckHasVoted, service.APIKey, caller.ToString())));
                     }
                     catch (TimeoutException)
                     {
-                        Logger.Log(Instance.Translations.Instance.Translate("api_down_message", service.Name));
-                        UnturnedChat.Say(caller, Instance.Translations.Instance.Translate("api_down_message", service.Name));
+                        Logger.LogError(Translations.Get("api_down_message", service.Name));
+                        caller.User.SendLocalizedMessage(Translations, "api_down_message", service.Name);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.LogException(ex);
+                Logger.LogError(null, ex);
             }
         }
 
-        private static List<VoteResult> voteResult = new List<VoteResult>();
-
-        class VoteResult{
-            public UnturnedPlayer caller;
-            public Service service;
-            public ServiceDefinition apidefinition;
-            public bool giveItemDirectly;
-            public string result;
-        }
-
-        static void wc_DownloadStringCompleted(System.Net.DownloadStringCompletedEventArgs e, UnturnedPlayer _caller, Service _service,ServiceDefinition _apidefinition, bool _giveItemDirectly)
+        private void OnDownloadStringCompleted(System.Net.DownloadStringCompletedEventArgs e, UnturnedPlayer caller, Service service, ServiceDefinition apidefinition, bool giveItemDirectly)
         {
-            VoteResult v = new VoteResult() { caller = _caller, result = e.Result, apidefinition = _apidefinition, service = _service, giveItemDirectly = _giveItemDirectly };
-            lock (queue)
+            VoteResult v = new VoteResult
             {
-                queue.Enqueue(v);
+                Caller = caller,
+                Result = e.Result,
+                ApiDefinition = apidefinition,
+                Service = service,
+                GiveItemDirectly = giveItemDirectly
+            };
+
+            lock (_queue)
+            {
+                _queue.Enqueue(v);
             }
         }
 
-        private static Queue<VoteResult> queue = new Queue<VoteResult>();
-        private void FixedUpdate()
+        private void UpdateTask()
         {
-            if(queue.Count > 0)
+            lock (_queue)
             {
-                VoteResult v = queue.Dequeue();
-                handleVote(v);
+                if (_queue.Count > 0)
+                {
+                    VoteResult v = _queue.Dequeue();
+                    HandleVote(v);
+                }
             }
         }
 
-        static void handleVote(VoteResult result) {
-            UnturnedPlayer p = result.caller;
-
-#if DEBUG
-            Console.WriteLine("Webserver returns: " +result.result);
-#endif
-
-            switch (result.result)
+        private void HandleVote(VoteResult result)
+        {
+            switch (result.Result)
             {
                 case "0":
-                    UnturnedChat.Say(result.caller, Instance.Translations.Instance.Translate("not_yet_voted", result.service.Name));
+                    result.Caller.User.SendLocalizedMessage(Translations, "not_yet_voted", result.Service.Name);
                     break;
                 case "1":
-                    if (result.giveItemDirectly)
+                    if (result.GiveItemDirectly)
                     {
-                        if (Instance.OnPlayerVoted != null) Instance.OnPlayerVoted(result.caller, result.apidefinition);
+                        if (!ConfigurationInstance.EnableRewardBundles)
+                            return;
 
-                        new VotifierWebclient().DownloadStringAsync(new Uri(String.Format(result.apidefinition.ReportSuccess, result.service.APIKey, result.caller.ToString())));
+                        EventManager.Emit(this, new PlayerVotedEvent(result.Caller, result.ApiDefinition), (e) =>
+                        {
+                            var @event = (PlayerVotedEvent) e;
+                            if (@event.IsCancelled)
+                                return;
+
+                            Votifier_OnPlayerVoted((UnturnedPlayer)@event.Player, @event.Service);
+                        });
+
+                        new VotifierWebclient().DownloadStringAsync(new Uri(String.Format(result.ApiDefinition.ReportSuccess, result.Service.APIKey, result.Caller.ToString())));
                         return;
                     }
                     else
                     {
-                        UnturnedChat.Say(result.caller, Instance.Translations.Instance.Translate("vote_pending_message", result.service.Name));
+                        result.Caller.User.SendLocalizedMessage(Translations, "vote_pending_message", result.Service.Name);
                         return;
                     }
                 case "2":
-                    UnturnedChat.Say(result.caller, Instance.Translations.Instance.Translate("vote_due_message", result.service.Name));
+                    result.Caller.User.SendLocalizedMessage(Translations, "vote_due_message", result.Service.Name);
                     break;
             }
         }
 
-
-    } 
-   
+        public void HandleEvent(IEventEmitter emitter, PlayerConnectedEvent @event)
+        {
+            if (@event.Player is UnturnedPlayer player)
+                Vote(player, false);
+        }
+    }
 }
