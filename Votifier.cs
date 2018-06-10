@@ -11,6 +11,7 @@ using Rocket.API.Scheduler;
 using Rocket.API.User;
 using Rocket.Core.I18N;
 using Rocket.Core.Player.Events;
+using Rocket.Core.Scheduler;
 
 namespace fr34kyn01535.Votifier
 {
@@ -33,7 +34,7 @@ namespace fr34kyn01535.Votifier
         {
             base.OnLoad(isFromReload);
             EventManager.AddEventListener(this, this);
-            _updateTask = _scheduler.ScheduleEveryAsyncFrame(this, UpdateTask);
+            _updateTask = _scheduler.ScheduleEveryAsyncFrame(this, UpdateTask, "VotifierHandleTask");
         }
 
         protected override void OnUnload()

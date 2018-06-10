@@ -23,11 +23,6 @@ namespace fr34kyn01535.Votifier
             Service = service;
         }
 
-        public PlayerVotedEvent(IPlayer player, ServiceDefinition service, string name = null, EventExecutionTargetContext executionTarget = EventExecutionTargetContext.Sync, bool global = true) : base(player, name, executionTarget, global)
-        {
-            Service = service;
-        }
-
         public bool IsCancelled { get; set; }
     }
 }
