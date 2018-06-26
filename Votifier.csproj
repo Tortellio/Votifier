@@ -1,122 +1,33 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{2D98D5E7-1928-4D09-881D-AA64A3AA0AB9}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>fr34kyn01535.Votifier</RootNamespace>
+    <TargetFrameworks>net35</TargetFrameworks>
     <AssemblyName>Votifier</AssemblyName>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>none</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <DocumentationFile>
-    </DocumentationFile>
-    <UseVSHostingProcess>false</UseVSHostingProcess>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+    <RootNamespace>fr34kyn01535.Votifier</RootNamespace>
+    <OutputType>Library</OutputType>
+  </PropertyGroup> 
+  <PropertyGroup>
+    <PackageId>Votifier</PackageId>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageTags>RocketMod Unturned</PackageTags>
+    <PackageLicenseUrl>https://github.com/RocketModPlugins/Votifier/blob/master/LICENSE</PackageLicenseUrl>
+	<PackageAuthors>Sven Mawby&lt;fr34kyn01535@bam.yt&gt;, Enes Sadık Özbek &lt;esozbek.me&gt;</PackageAuthors>
+    <PackageOwners>Sven Mawby&lt;fr34kyn01535@bam.yt&gt;</PackageOwners>
+    <Version>1.0.0</Version>
+	<PackageVersion>1.0.0</PackageVersion>
+    <Authors> Sven Mawby&lt;fr34kyn01535@bam.yt&gt;, Enes Sadık Özbek &lt;esozbek.me&gt;</Authors>
+    <Description>Vote on server lists and get a reward.</Description>
+    <Copyright>Sven Mawby&lt;fr34kyn01535@bam.yt&gt;</Copyright>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <FileVersion>1.0.0</FileVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Assembly-CSharp, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Unturned.5.0.0.155\lib\net35\Assembly-CSharp.dll</HintPath>
-    </Reference>
-    <Reference Include="Assembly-CSharp-firstpass, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Unturned.5.0.0.155\lib\net35\Assembly-CSharp-firstpass.dll</HintPath>
-    </Reference>
-    <Reference Include="ICSharpCode.SharpZipLib, Version=0.86.0.518, Culture=neutral, PublicKeyToken=1b03e6acf1164f73, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\ICSharpCode.SharpZipLib.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Practices.ServiceLocation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\Microsoft.Practices.ServiceLocation.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Practices.Unity, Version=2.1.505.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\Microsoft.Practices.Unity.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Practices.Unity.Configuration, Version=2.1.505.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\Microsoft.Practices.Unity.Configuration.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="RestSharp, Version=105.2.3.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\RestSharp.dll</HintPath>
-    </Reference>
-    <Reference Include="Rocket.API, Version=5.0.0.534, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.API.5.0.0.534\lib\net35\Rocket.API.dll</HintPath>
-    </Reference>
-    <Reference Include="Rocket.Compatibility, Version=5.0.0.534, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Compatibility.5.0.0.534\lib\net35\Rocket.Compatibility.dll</HintPath>
-    </Reference>
-    <Reference Include="Rocket.Core, Version=5.0.0.534, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\Rocket.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="Rocket.UnityEngine, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.UnityEngine.5.0.0.34\lib\net35\Rocket.UnityEngine.dll</HintPath>
-    </Reference>
-    <Reference Include="Rocket.Unturned, Version=5.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Rocket.Unturned.5.0.0.155\lib\net35\Rocket.Unturned.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Runtime.Serialization">
-      <HintPath>packages\Rocket.Core.5.0.0.534\lib\net35\System.Runtime.Serialization.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
-    <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
+    <PackageReference Include="Rocket.Core" Version="5.0.0.566">
+        <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+	</PackageReference>
+    <PackageReference Include="Rocket.Unturned" Version="5.0.0.162" />
+    <Reference Include="UnityEngine">
       <HintPath>lib\UnityEngine.dll</HintPath>
-      <Private>False</Private>
     </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="CommandReward.cs" />
-    <Compile Include="Config\Reward.cs" />
-    <Compile Include="Config\RewardBundle.cs" />
-    <Compile Include="Config\Service.cs" />
-    <Compile Include="Config\ServiceDefinition.cs" />
-    <Compile Include="PlayerVotedEvent.cs" />
-    <Compile Include="VoteResult.cs" />
-    <Compile Include="VotifierWebclient.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="Config\VotifierConfiguration.cs" />
-    <Compile Include="Votifier.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="lib\UnityEngine.dll" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="app.config" />
-    <None Include="packages.config" />
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
 </Project>
