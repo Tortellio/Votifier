@@ -1,72 +1,122 @@
-﻿using Rocket.API;
-using Rocket.API.Collections;
-using Rocket.Core.Logging;
-using Rocket.Core.Plugins;
-using Rocket.Unturned;
-using Rocket.Unturned.Chat;
-using Rocket.Unturned.Player;
+﻿using System;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
+using Cysharp.Threading.Tasks;
+using OpenMod.Unturned.Plugins;
+using OpenMod.API.Plugins;
+using System.Net;
+using OpenMod.Core.Eventing;
 using SDG.Unturned;
-using Steamworks;
-using System;
-using System.Collections;
+using OpenMod.API.Eventing;
+using OpenMod.Core.Users.Events;
+using OpenMod.API.Prioritization;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Linq;
+using OpenMod.API.Commands;
 using UnityEngine;
-using Logger = Rocket.Core.Logging.Logger;
-using Random = System.Random;
+using Steamworks;
+using System.Collections;
+using OpenMod.API.Ioc;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace fr34kyn01535.Votifier
+[assembly: PluginMetadata("Tortellio.Votifier", DisplayName = "Votifier")]
+namespace Tortellio.Votifier
 {
-    public class Votifier : RocketPlugin<Config>
+    public class Votifier : OpenModUnturnedPlugin
     {
-        public static Votifier Instance;
-        public delegate void PlayerVotedEvent(UnturnedPlayer player, ServiceDefinition definition);
+        internal readonly IConfiguration m_Configuration;
+        internal readonly IStringLocalizer m_StringLocalizer;
+        private readonly ILogger<Votifier> m_Logger;
+        public delegate void PlayerVotedEvent(Player player, ServiceDefinition definition);
         public event PlayerVotedEvent OnPlayerVoted;
-        private readonly List<VoteResult> voteResult = new List<VoteResult>();
-        private readonly Queue<VoteResult> queue = new Queue<VoteResult>();
+        internal Queue<VoteResult> queue = new Queue<VoteResult>();
         internal Color MsgColor;
-        protected override void Load()
+        public Votifier(
+            IConfiguration configuration, 
+            IStringLocalizer stringLocalizer,
+            ILogger<Votifier> logger, 
+            IServiceProvider serviceProvider) : base(serviceProvider)
         {
-            Instance = this;
-            MsgColor = UnturnedChat.GetColorFromName(Configuration.Instance.MessageColor, Color.green);
-            U.Events.OnPlayerConnected += OnPlayerConnected;
-            if (Configuration.Instance.EnableRewardBundles)
+            m_Configuration = configuration;
+            m_StringLocalizer = stringLocalizer;
+            m_Logger = logger;
+        }
+        protected override async UniTask OnLoadAsync()
+        {
+            await UniTask.SwitchToMainThread();
+
+            MsgColor = GetColorFromName(m_Configuration["MessageColor"], Color.green);
+
+            if (m_Configuration.GetSection("EnableRewardBundles").Get<bool>())
             {
                 OnPlayerVoted += Votifier_OnPlayerVoted;
             }
-            StartCoroutine((IEnumerator)CheckQueue());
+            Provider.onEnemyConnected += OnPlayerConnected;
+
+            await UniTask.SwitchToThreadPool();
+
+            m_Logger.LogInformation("Votifier by Tortellio has been unloaded.");
         }
-        protected override void Unload()
+
+        protected override UniTask OnUnloadAsync()
         {
-            Instance = null;
-            U.Events.OnPlayerConnected -= OnPlayerConnected;
-            if (Configuration.Instance.EnableRewardBundles)
+            if (m_Configuration.GetSection("EnableRewardBundles").Get<bool>())
             {
                 OnPlayerVoted -= Votifier_OnPlayerVoted;
             }
-            StopCoroutine((IEnumerator)CheckQueue());
+            Provider.onEnemyConnected -= OnPlayerConnected;
+
+            m_Logger.LogInformation("Votifier by Tortellio has been unloaded.");
+
+            return UniTask.CompletedTask;
         }
-        public override TranslationList DefaultTranslations
+        private async void OnPlayerConnected(SteamPlayer splayer)
         {
-            get
+            await UniTask.SwitchToMainThread();
+
+            Vote(PlayerTool.getPlayer(splayer.playerID.steamID), false);
+
+            await UniTask.SwitchToThreadPool();
+        }
+        private void Wc_DownloadStringCompleted(DownloadStringCompletedEventArgs e, Player _caller, Service _service, ServiceDefinition _apidefinition, bool _giveItemDirectly)
+        {
+            VoteResult v = new VoteResult() { caller = _caller, result = e.Result, apidefinition = _apidefinition, service = _service, giveItemDirectly = _giveItemDirectly };
+            lock (queue)
             {
-                return new TranslationList() {
-                    {"no_apikeys_message","No apikeys supplied."},
-                    {"api_unknown_message", "The API for {0} is unknown"},
-                    {"api_down_message","Can't reach {0}, is it down?!"},
-                    {"not_yet_voted","You have not yet voted for this server on: {0}"},
-                    {"no_rewards_found","Failed finding any reward bundles"},
-                    {"vote_give_error_message","Failed giving a {3} to {0} ({1},{2})"},
-                    {"vote_success_message","{0} voted on {1} and received the \"{2}\" bundle"},
-                    {"vote_pending_message","You have an outstanding reward for your vote on {0}"},
-                    {"vote_due_message","You have already voted for this server on {0}, Thanks!"}
-                };
+                queue.Enqueue(v);
             }
         }
-        private void OnPlayerConnected(UnturnedPlayer player)
+        internal void HandleVote(VoteResult result)
         {
-            //Trigger Vote
-            Vote(player, false);
+            Player p = result.caller;
+
+#if DEBUG
+            Console.WriteLine("Webserver returns: " + result.result);
+#endif
+
+            switch (result.result)
+            {
+                case "0":
+                    Say(result.caller, m_StringLocalizer["not_yet_voted", result.service.Name], MsgColor, m_Configuration["MessageFailedIconUrl"]);
+                    break;
+                case "1":
+                    if (result.giveItemDirectly)
+                    {
+                        OnPlayerVoted?.Invoke(result.caller, result.apidefinition);
+                        new VotifierWebclient().DownloadStringAsync(new Uri(string.Format(result.apidefinition.ReportSuccess, result.service.APIKey, result.caller.channel.owner.playerID.steamID.m_SteamID.ToString())));
+                        return;
+                    }
+                    else
+                    {
+                        Say(result.caller, m_StringLocalizer["vote_pending_message", result.service.Name], MsgColor, m_Configuration["MessageFailedIconUrl"]);
+                        return;
+                    }
+                case "2":
+                    Say(result.caller, m_StringLocalizer["vote_due_message", result.service.Name], MsgColor, m_Configuration["MessageFailedIconUrl"]);
+                    break;
+            }
         }
         private void Votifier_OnPlayerVoted(UnturnedPlayer player, ServiceDefinition definition)
         {
@@ -134,7 +184,7 @@ namespace fr34kyn01535.Votifier
             if (Configuration.Instance.GlobalRewardAnnouncement) Say(Translations.Instance.Translate("vote_success_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
             else Say(player, Instance.Translations.Instance.Translate("vote_success_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
         }
-        internal void ForceReward(UnturnedPlayer player, string reward = "$$random$$")
+        internal void ForceReward(Player player, string reward = "$$random$$")
         {
             if (reward == "$$random$$")
             {
@@ -143,9 +193,9 @@ namespace fr34kyn01535.Votifier
             else
             {
                 RewardBundle bundle = null;
-                if (Configuration.Instance.RewardBundles.Count != 0)
+                if (m_Configuration.GetSection("RewardBundles").Get<List<RewardBundle>>().Count != 0)
                 {
-                    bundle = Configuration.Instance.RewardBundles.FirstOrDefault(r => r.Name == reward);
+                    bundle = m_Configuration.GetSection("RewardBundles").Get<List<RewardBundle>>().FirstOrDefault(r => r.Name == reward);
                 }
                 else
                 {
@@ -161,7 +211,7 @@ namespace fr34kyn01535.Votifier
                 {
                     if (!player.GiveItem(item.ItemID, item.Amount))
                     {
-                        Logger.Log(Instance.Translations.Instance.Translate("vote_give_error_message", player.CharacterName, item.ItemID, item.Amount, "item"));
+                        m_Logger.LogInformation(m_StringLocalizer["FAIL:VOTE_GIVE_ERROR_MESSAGE", player.CharacterName, item.ItemID, item.Amount, "item"]);
                     }
                 }
 
@@ -177,10 +227,10 @@ namespace fr34kyn01535.Votifier
                         {
                             vector.y = raycastHit.point.y + 16f;
                         }
-                        status = VehicleManager.spawnLockedVehicleForPlayerV2(vehicle.VehicleID, vector, player.Player.transform.rotation, player.Player);
+                        status = VehicleManager.spawnLockedVehicleForPlayer(vehicle.VehicleID, vector, player.Player.transform.rotation, player.Player);
                         if (status == null)
                         {
-                            Logger.Log(Instance.Translations.Instance.Translate("vote_give_error_message", player.CharacterName, vehicle.VehicleID, vehicle.Amount, "vehicle"));
+                            m_Logger.LogInformation(m_StringLocalizer["FAIL:VOTE_GIVE_ERROR_MESSAGE", player.CharacterName, vehicle.VehicleID, vehicle.Amount, "vehicle"]);
                         }
                     }
                 }
@@ -193,86 +243,40 @@ namespace fr34kyn01535.Votifier
                 }
             }
         }
-        internal void Vote(UnturnedPlayer caller, bool giveItemDirectly = true)
+        internal void Vote(Player caller, bool giveItemDirectly = true)
         {
             try
             {
-                if (Configuration.Instance.Services.Where(s => !string.IsNullOrEmpty(s.APIKey)).FirstOrDefault() == null)
+                if (m_Configuration.GetSection("Services").Get<List<Service>>().Where(s => !string.IsNullOrEmpty(s.APIKey)).FirstOrDefault() == null)
                 {
-                    Logger.Log(Translations.Instance.Translate("no_apikeys_message")); return;
+                    m_Logger.LogInformation(m_StringLocalizer["FAIL:NO_API_MESSAGE"]); 
+                    return;
                 }
 
-                List<Service> services = Configuration.Instance.Services.Where(s => !string.IsNullOrEmpty(s.APIKey)).ToList();
+                List<Service> services = m_Configuration.GetSection("Services").Get<List<Service>>().Where(s => !string.IsNullOrEmpty(s.APIKey)).ToList();
                 foreach (Service service in services)
                 {
-                    ServiceDefinition apidefinition = Configuration.Instance.ServiceDefinitions.Where(s => s.Name == service.Name).FirstOrDefault();
-                    if (apidefinition == null) { Logger.Log(Translations.Instance.Translate("api_unknown_message", service.Name)); return; }
+                    ServiceDefinition apidefinition = m_Configuration.GetSection("Services").Get<List<ServiceDefinition>>().Where(s => s.Name == service.Name).FirstOrDefault();
+                    if (apidefinition == null) { m_Logger.LogInformation(m_StringLocalizer["FAIL:API_UNKNOWN_MESSAGE", service.Name]); return; }
                     try
                     {
                         VotifierWebclient wc = new VotifierWebclient();
-                        wc.DownloadStringCompleted += (sender, e) => Wc_DownloadStringCompleted(e, caller, service,apidefinition, giveItemDirectly);
+                        wc.DownloadStringCompleted += (sender, e) => Wc_DownloadStringCompleted(e, caller, service, apidefinition, giveItemDirectly);
                         wc.DownloadStringAsync(new Uri(string.Format(apidefinition.CheckHasVoted, service.APIKey, caller.ToString())));
                     }
                     catch (TimeoutException)
                     {
-                        Logger.Log(Translations.Instance.Translate("api_down_message", service.Name));
-                        Say(caller, Translations.Instance.Translate("api_down_message", service.Name), MsgColor, Configuration.Instance.MessageFailedIconUrl);
+                        m_Logger.LogInformation(m_StringLocalizer["FAIL:API_DOWN_MESSAGE", service.Name]);
+                        Say(caller.channel.owner.playerID.steamID, m_StringLocalizer["FAIL:API_DOWN_MESSAGE", service.Name], MsgColor, m_Configuration["MessageFailedIconUrl"]);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.LogException(ex);
+                throw new UserFriendlyException(ex.Message);
             }
         }
-        private void Wc_DownloadStringCompleted(System.Net.DownloadStringCompletedEventArgs e, UnturnedPlayer _caller, Service _service,ServiceDefinition _apidefinition, bool _giveItemDirectly)
-        {
-            VoteResult v = new VoteResult() { caller = _caller, result = e.Result, apidefinition = _apidefinition, service = _service, giveItemDirectly = _giveItemDirectly };
-            lock (queue)
-            {
-                queue.Enqueue(v);
-            }
-        }
-        private void HandleVote(VoteResult result) {
-            UnturnedPlayer p = result.caller;
-
-#if DEBUG
-            Console.WriteLine("Webserver returns: " +result.result);
-#endif
-
-            switch (result.result)
-            {
-                case "0":
-                    Say(result.caller, Translations.Instance.Translate("not_yet_voted", result.service.Name), MsgColor, Configuration.Instance.MessageFailedIconUrl);
-                    break;
-                case "1":
-                    if (result.giveItemDirectly)
-                    {
-                        OnPlayerVoted?.Invoke(result.caller, result.apidefinition);
-                        new VotifierWebclient().DownloadStringAsync(new Uri(string.Format(result.apidefinition.ReportSuccess, result.service.APIKey, result.caller.CSteamID.m_SteamID.ToString())));
-                        return;
-                    }
-                    else
-                    {
-                        Say(result.caller, Translations.Instance.Translate("vote_pending_message", result.service.Name), MsgColor, Configuration.Instance.MessageFailedIconUrl);
-                        return;
-                    }
-                case "2":
-                    Say(result.caller, Instance.Translations.Instance.Translate("vote_due_message", result.service.Name), MsgColor, Configuration.Instance.MessageFailedIconUrl);
-                    break;
-            }
-        }
-        private IEnumerator<WaitForSeconds> CheckQueue()
-        {
-            while (Instance != null){
-                if (queue.Count > 0)
-                {
-                    VoteResult v = queue.Dequeue();
-                    HandleVote(v);
-                }
-                yield return new WaitForSeconds(0.1f);
-            }
-        }
+        #region Utilities
         public List<string> WrapMessage(string text)
         {
             if (text.Length == 0) return new List<string>();
@@ -305,25 +309,19 @@ namespace fr34kyn01535.Votifier
         }
         public void Say(CSteamID CSteamID, string message, Color color, string imageURL)
         {
-            if (CSteamID.ToString() == "0")
-            {
-                Logger.Log(message, ConsoleColor.Gray);
-                return;
-            }
             SteamPlayer steamPlayer = PlayerTool.getSteamPlayer(CSteamID);
-            foreach (string text in UnturnedChat.wrapMessage(message))
+            foreach (string text in WrapMessage(message))
             {
                 ChatManager.serverSendMessage(text, color, null, steamPlayer, EChatMode.SAY, imageURL, true);
             }
         }
-        public void Say(IRocketPlayer player, string message, Color color, string imageURL)
+        public void Say(Player player, string message, Color color, string imageURL)
         {
-            if (player is ConsolePlayer)
+            SteamPlayer steamPlayer = PlayerTool.getSteamPlayer(player.channel.owner.playerID.steamID);
+            foreach (string text in WrapMessage(message))
             {
-                Logger.Log(message, ConsoleColor.Gray);
-                return;
+                ChatManager.serverSendMessage(text, color, null, steamPlayer, EChatMode.SAY, imageURL, true);
             }
-            Say(new CSteamID(ulong.Parse(player.Id)), message, color, imageURL);
         }
         public void Say(string message, Color color, string imageURL)
         {
@@ -332,14 +330,151 @@ namespace fr34kyn01535.Votifier
                 ChatManager.serverSendMessage(m, color, fromPlayer: null, toPlayer: null, mode: EChatMode.GLOBAL, iconURL: imageURL, useRichTextFormatting: true);
             }
         }
+        public Color GetColorFromName(string colorName, Color fallback)
+        {
+            switch (colorName.Trim().ToLower())
+            {
+                case "black": return Color.black;
+                case "blue": return Color.blue;
+                case "clear": return Color.clear;
+                case "cyan": return Color.cyan;
+                case "gray": return Color.gray;
+                case "green": return Color.green;
+                case "grey": return Color.grey;
+                case "magenta": return Color.magenta;
+                case "red": return Color.red;
+                case "white": return Color.white;
+                case "yellow": return Color.yellow;
+                case "rocket": return GetColorFromRGB(90, 206, 205);
+            }
+
+            Color? color = GetColorFromHex(colorName);
+            if (color.HasValue) return color.Value;
+
+            return fallback;
+        }
+        public Color? GetColorFromHex(string hexString)
+        {
+            hexString = hexString.Replace("#", "");
+            if (hexString.Length == 3)
+            { // #99f
+                hexString = hexString.Insert(1, Convert.ToString(hexString[0])); // #999f
+                hexString = hexString.Insert(3, Convert.ToString(hexString[2])); // #9999f
+                hexString = hexString.Insert(5, Convert.ToString(hexString[4])); // #9999ff
+            }
+            if (hexString.Length != 6 || !int.TryParse(hexString, System.Globalization.NumberStyles.HexNumber, null, out int argb))
+            {
+                return null;
+            }
+            byte r = (byte)((argb >> 16) & 0xff);
+            byte g = (byte)((argb >> 8) & 0xff);
+            byte b = (byte)(argb & 0xff);
+            return GetColorFromRGB(r, g, b);
+        }
+        public Color GetColorFromRGB(byte R, byte G, byte B)
+        {
+            return GetColorFromRGB(R, G, B, 100);
+        }
+        public Color GetColorFromRGB(byte R, byte G, byte B, short A)
+        {
+            return new Color((1f / 255f) * R, (1f / 255f) * G, (1f / 255f) * B, (1f / 100f) * A);
+        }
+        #endregion
+    }
+
+    [PluginServiceImplementation(Lifetime = ServiceLifetime.Singleton)]
+    public class UpdateTask : MonoBehaviour
+    {
+        private readonly IPluginAccessor<Votifier> VotifierPlugin;
+        public UpdateTask(IPluginAccessor<Votifier> votifierPlugin)
+        {
+            VotifierPlugin = votifierPlugin;
+        }
+        bool Loaded = false;
+        protected void Load()
+        {
+            Loaded = true;
+            StartCoroutine((IEnumerator)CheckQueue());
+        }
+        protected void Unload()
+        {
+            Loaded = false;
+            StopCoroutine((IEnumerator)CheckQueue());
+        }
+        private IEnumerator<WaitForSeconds> CheckQueue()
+        {
+            while (Loaded)
+            {
+                if (VotifierPlugin.Instance.queue.Count > 0)
+                {
+                    VoteResult v = VotifierPlugin.Instance.queue.Dequeue();
+                    VotifierPlugin.Instance.HandleVote(v);
+                }
+                yield return new WaitForSeconds(0.1f);
+            }
+        }
     }
     public class VoteResult
     {
-        public UnturnedPlayer caller;
+        public Player caller;
         public Service service;
         public ServiceDefinition apidefinition;
         public bool giveItemDirectly;
         public string result;
         public VoteResult() { }
+    }
+    public class VotifierWebclient : WebClient
+    {
+        public int Timeout { get; private set; }
+        public VotifierWebclient(int timeout = 5000)
+        {
+            Timeout = timeout;
+        }
+        protected override WebRequest GetWebRequest(Uri address)
+        {
+            var result = base.GetWebRequest(address);
+            result.Timeout = Timeout;
+            return result;
+        }
+    }
+    public class Service
+    {
+        public string Name;
+        public string APIKey;
+        public Service() { }
+    }
+    public class ServiceDefinition
+    {
+        public string Name;
+        public string CheckHasVoted;
+        public string ReportSuccess;
+        public ServiceDefinition() { }
+    }
+    public class RewardBundle
+    {
+        public string Name;
+        public int Probability;
+        public Reward Reward;
+        public RewardBundle() { }
+    }
+    public class Reward
+    {
+        public uint Experiences;
+        public List<Item> Items;
+        public List<Vehicle> Vehicles;
+        public List<string> Commands;
+        public Reward() { }
+    }
+    public class Item
+    {
+        public ushort ItemID;
+        public byte Amount;
+        public Item() { }
+    }
+    public class Vehicle
+    {
+        public ushort VehicleID;
+        public byte Amount;
+        public Vehicle() { }
     }
 }

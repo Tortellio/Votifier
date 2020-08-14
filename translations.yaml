@@ -1,0 +1,9 @@
+FAIL:
+	API_DOWN_MESSAGE: "Can't reach {0}, is it down?!"
+	API_UNKNOWN_MESSAGE: "The API for {0} is unknown"
+	NO_API_MESSAGE: "No apikeys supplied."
+	NO_REWARDS_FOUND: "Failed finding any rewardbundles"
+	NOT_YET_VOTED: "You have not yet voted for this server on: {0}"
+	VOTE_GIVE_ERROR_MESSAGE: "Failed giving a {3} to {0} ({1},{2})"
+SUCCESS:
+	VOTE_SUCCESS_MESSAGE: "{0} voted on {1} and received the {2} bundle"

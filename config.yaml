@@ -1,0 +1,49 @@
+MessageColor: "Cyan"
+
+MessageFailedIconUrl: "https://i.imgur.com/FeIvao9.png"
+MessageSuccessIconUrl: "https://i.imgur.com/IYONga6.png"
+
+EnableRewardBundles: "true"
+GlobalRewardAnnouncement: "true"
+
+RewardBundles:
+	- RewardBundle:
+		Name: "Hoho"
+		Probability: 100
+		Reward:
+			Experiences: 100
+			Items:
+				- Item:
+					ItemID: 363
+					Amount: 1
+				- Item:
+					ItemID: 132
+					Amount: 1
+			Vehicles:
+				- Vehicle:
+					VehicleID: 2
+					Amount: 1
+				- Vehicle:
+					VehicleID: 3
+					Amount: 1
+			Commands:
+				- "say test"
+				- "say pulupulu"
+
+Services:
+	- Service:
+		Name: "unturned-servers.net"
+		APIKey: "apikey"
+	- Service:
+		Name: "unturnedsl.com"
+		APIKey: "apikey"
+
+ServiceDefinitions:
+	- ServiceDefinition:
+		Name: "unturned-servers.net"
+		CheckHasVoted: "https://unturned-servers.net/api/?object=votes&element=claim&key={0}&steamid={1}"
+		ReportSuccess: "https://unturned-servers.net/api/?action=post&object=votes&element=claim&key={0}&steamid={1}"
+	- ServiceDefinition:
+		Name: "unturnedsl.com"
+		CheckHasVoted: "http://unturnedsl.com/api/dedicated/{0}/{1}"
+		ReportSuccess: "http://unturnedsl.com/api/dedicated/post/{0}/{1}"
