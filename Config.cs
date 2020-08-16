@@ -24,6 +24,55 @@ namespace fr34kyn01535.Votifier
             MessageColor = "Cyan";
             MessageFailedIconUrl = "https://i.imgur.com/FeIvao9.png";
             MessageSuccessIconUrl = "https://i.imgur.com/IYONga6.png";
+            EnableRewardBundles = true;
+            GlobalRewardAnnouncement = true;
+            RewardBundles = new List<RewardBundle>()
+            {
+                new RewardBundle
+                {
+                    Name = "Hehe",
+                    Probability = 66,
+                    OneTimeOnly = false,
+                    Experiences = 100,
+                    Items = new List<ItemReward>
+                    {
+                        new ItemReward{ ItemID = 363, Amount = 1 },
+                        new ItemReward{ ItemID = 132, Amount = 1 },
+                    },
+                    Vehicles = new List<VehicleReward>
+                    {
+                        new VehicleReward{ VehicleID = 2, Amount = 1 },
+                        new VehicleReward{ VehicleID = 1, Amount = 1 },
+                    },
+                    Commands = new List<string>
+                    {
+                        "pay {playerid} 1000",
+                        "Broadcast {playername} hehe"
+                    }
+                },
+                new RewardBundle
+                {
+                    Name = "Hoho",
+                    Probability = 33,
+                    OneTimeOnly = false,
+                    Experiences = 100,
+                    Items = new List<ItemReward>
+                    {
+                        new ItemReward{ ItemID = 363, Amount = 1 },
+                        new ItemReward{ ItemID = 132, Amount = 1 },
+                    },
+                    Vehicles = new List<VehicleReward>
+                    {
+                        new VehicleReward{ VehicleID = 2, Amount = 1 },
+                        new VehicleReward{ VehicleID = 1, Amount = 1 },
+                    },
+                    Commands = new List<string>
+                    {
+                        "pay {playerid} 1000",
+                        "Broadcast {playername} hehe"
+                    }
+                }
+            };
             Services = new List<Service>()
             {
                 new Service
@@ -37,7 +86,7 @@ namespace fr34kyn01535.Votifier
                     APIKey = "apikey"
                 }
             };
-            ServiceDefinitions = new List<ServiceDefinition>() 
+            ServiceDefinitions = new List<ServiceDefinition>()
             {
                 new ServiceDefinition() {
                     Name = "unturned-servers.net",
@@ -48,59 +97,6 @@ namespace fr34kyn01535.Votifier
                     Name = "unturnedsl.com",
                     CheckHasVoted = "http://unturnedsl.com/api/dedicated/{0}/{1}",
                     ReportSuccess = "http://unturnedsl.com/api/dedicated/post/{0}/{1}"
-                }
-            };
-            EnableRewardBundles = true;
-            GlobalRewardAnnouncement = true;
-            RewardBundles = new List<RewardBundle>()
-            {
-                new RewardBundle
-                {
-                    Name = "Hehe",
-                    Probability = 66,
-                    Reward = new Reward
-                    {
-                        Experiences = 100,
-                        Items = new List<ItemReward>
-                        {
-                            new ItemReward{ ItemID = 363, Amount = 1 },
-                            new ItemReward{ ItemID = 132, Amount = 1 },
-                        },
-                        Vehicles = new List<VehicleReward>
-                        {
-                            new VehicleReward{ VehicleID = 2, Amount = 1 },
-                            new VehicleReward{ VehicleID = 1, Amount = 1 },
-                        },
-                        Commands = new List<string>
-                        {
-                            "pay {playerid} 1000",
-                            "Broadcast {playername} hehe"
-                        }
-                    }
-                },
-                new RewardBundle
-                {
-                    Name = "Hoho",
-                    Probability = 33,
-                    Reward = new Reward
-                    {
-                        Experiences = 100,
-                        Items = new List<ItemReward>
-                        {
-                            new ItemReward{ ItemID = 363, Amount = 1 },
-                            new ItemReward{ ItemID = 132, Amount = 1 },
-                        },
-                        Vehicles = new List<VehicleReward>
-                        {
-                            new VehicleReward{ VehicleID = 2, Amount = 1 },
-                            new VehicleReward{ VehicleID = 1, Amount = 1 },
-                        },
-                        Commands = new List<string>
-                        {
-                            "pay {playerid} 1000",
-                            "Broadcast {playername} hehe"
-                        }
-                    }
                 }
             };
         }
@@ -132,11 +128,8 @@ namespace fr34kyn01535.Votifier
         public string Name;
         [XmlAttribute("Probability")]
         public int Probability;
-        public Reward Reward;
-        public RewardBundle() { }
-    }
-    public class Reward
-    {
+        [XmlAttribute("OneTimeOnly")]
+        public bool OneTimeOnly;
         public uint Experiences;
         [XmlArrayItem(ElementName = "Item")]
         public List<ItemReward> Items;
@@ -144,7 +137,7 @@ namespace fr34kyn01535.Votifier
         public List<VehicleReward> Vehicles;
         [XmlArrayItem(ElementName = "Command")]
         public List<string> Commands;
-        public Reward() { }
+        public RewardBundle() { }
     }
     public class ItemReward
     {

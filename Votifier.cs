@@ -10,7 +10,10 @@ using Steamworks;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Xml;
+using System.Xml.Serialization;
 using UnityEngine;
 using Logger = Rocket.Core.Logging.Logger;
 using Random = System.Random;
@@ -22,8 +25,10 @@ namespace fr34kyn01535.Votifier
         public static Votifier Instance;
         public delegate void PlayerVotedEvent(UnturnedPlayer player, ServiceDefinition definition);
         public event PlayerVotedEvent OnPlayerVoted;
-        private readonly List<VoteResult> voteResult = new List<VoteResult>();
-        private readonly Queue<VoteResult> queue = new Queue<VoteResult>();
+        //private readonly List<VoteResult> voteResult = new List<VoteResult>();
+        private readonly Queue<VoteResult> queue = new Queue<VoteResult>(); 
+        public Dictionary<CSteamID, List<string>> PlayerReward;
+        public const string VFILEPATH = "Plugins/Votifier/data.xml";
         internal Color MsgColor;
         protected override void Load()
         {
@@ -35,6 +40,28 @@ namespace fr34kyn01535.Votifier
                 OnPlayerVoted += Votifier_OnPlayerVoted;
             }
             StartCoroutine((IEnumerator)CheckQueue());
+
+            if (!File.Exists(VFILEPATH))
+            {
+                Logger.Log("Datafile not found, creating one now...");
+                File.Create(VFILEPATH).Dispose();
+                PlayerReward = new Dictionary<CSteamID, List<string>>();
+            }
+            else
+            {
+                try
+                {
+                    PlayerReward = DeserializePlayerDict();
+                }
+                catch (XmlException)
+                {
+                    Logger.Log(" Failed to deserialize datafile. This is normal for a first run.");
+                    Logger.Log(" Delete data.xml in plugin folder if this keeps on happening.");
+                    Logger.Log(" MAKE SURE THAT THE PLUGIN IS PROPERLY UNLOADED.");
+                    PlayerReward = new Dictionary<CSteamID, List<string>>();
+                }
+            }
+
         }
         protected override void Unload()
         {
@@ -45,6 +72,38 @@ namespace fr34kyn01535.Votifier
                 OnPlayerVoted -= Votifier_OnPlayerVoted;
             }
             StopCoroutine((IEnumerator)CheckQueue());
+
+            Logger.LogWarning("Saving player reward data to a file...");
+            SerializePlayerDict(PlayerReward);
+            Logger.LogWarning("Done!");
+        }
+        public static void SerializePlayerDict(Dictionary<CSteamID, List<string>> dict)
+        {
+            List<VPlayer> players = new List<VPlayer>();
+            foreach (KeyValuePair<CSteamID, List<string>> kv in dict)
+            {
+                players.Add(new VPlayer(kv.Key.m_SteamID, kv.Value));
+            }
+            XmlSerializer serializer = new XmlSerializer(typeof(List<VPlayer>));
+            using (TextWriter stream = new StreamWriter(VFILEPATH, false))
+            {
+                serializer.Serialize(stream, players);
+            }
+        }
+        public static Dictionary<CSteamID, List<string>> DeserializePlayerDict()
+        {
+            Dictionary<CSteamID, List<string>> dict = new Dictionary<CSteamID, List<string>>();
+            XmlSerializer serializer = new XmlSerializer(typeof(List<VPlayer>));
+            List<VPlayer> players;
+            using (TextReader stream = new StreamReader(VFILEPATH))
+            {
+                players = (List<VPlayer>)serializer.Deserialize(stream);
+            }
+            foreach (VPlayer player in players)
+            {
+                dict[new CSteamID(player.SteamID)] = player.OneTimeReward;
+            }
+            return dict;
         }
         public override TranslationList DefaultTranslations
         {
@@ -53,13 +112,14 @@ namespace fr34kyn01535.Votifier
                 return new TranslationList() {
                     {"no_apikeys_message","No apikeys supplied."},
                     {"api_unknown_message", "The API for {0} is unknown"},
-                    {"api_down_message","Can't reach {0}, is it down?!"},
+                    {"api_down_message","Can't reach {0}, website is down!"},
                     {"not_yet_voted","You have not yet voted for this server on: {0}"},
                     {"no_rewards_found","Failed finding any reward bundles"},
                     {"vote_give_error_message","Failed giving a {3} to {0} ({1},{2})"},
-                    {"vote_success_message","{0} voted on {1} and received the \"{2}\" bundle"},
-                    {"vote_pending_message","You have an outstanding reward for your vote on {0}"},
-                    {"vote_due_message","You have already voted for this server on {0}, Thanks!"}
+                    {"vote_success_message","{0} voted on {1} and received the \"{2}\" bundle! Vote now!"},
+                    {"vote_success_onetime_message","{0} voted on {1} and received the \"{2}\" bundle (One-Time Only)! Vote now!"},
+                    {"vote_pending_message","You have an outstanding reward for your vote on {0}! Type /reward"},
+                    {"vote_due_message","You have already voted for this server on {0}, Thank you!"}
                 };
             }
         }
@@ -80,8 +140,32 @@ namespace fr34kyn01535.Votifier
                 {
                     if (diceRoll > i && diceRoll <= i + b.Probability)
                     {
-                        bundle = b;
-                        break;
+                        if (PlayerReward.TryGetValue(player.CSteamID, out var reward))
+                        {
+                            if (reward.Contains(b.Name))
+                            {
+                                i += b.Probability;
+                                continue;
+                            }
+                            else
+                            {
+                                bundle = b;
+                                if (bundle.OneTimeOnly)
+                                {
+                                    PlayerReward[player.CSteamID].Add(bundle.Name);
+                                }
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            bundle = b;
+                            if (bundle.OneTimeOnly)
+                            {
+                                PlayerReward.Add(player.CSteamID, new List<string> { bundle.Name });
+                            }
+                            break;
+                        }
                     }
                     i += b.Probability;
                 }
@@ -93,10 +177,10 @@ namespace fr34kyn01535.Votifier
             }
 
             // Experience Reward
-            player.Experience += bundle.Reward.Experiences;
+            player.Experience += bundle.Experiences;
 
             // Item Reward
-            foreach (var item in bundle.Reward.Items)
+            foreach (var item in bundle.Items)
             {
                 if (!player.GiveItem(item.ItemID, item.Amount))
                 {
@@ -105,7 +189,7 @@ namespace fr34kyn01535.Votifier
             }
 
             // Vehicle Reward
-            foreach (var vehicle in bundle.Reward.Vehicles)
+            foreach (var vehicle in bundle.Vehicles)
             {
                 for (int i = 0; i < vehicle.Amount; i++)
                 {
@@ -125,14 +209,21 @@ namespace fr34kyn01535.Votifier
             }
 
             // Command Reward
-            foreach (var command in bundle.Reward.Commands)
+            foreach (var command in bundle.Commands)
             {
                 bool yes = true;
                 CommandWindow.onCommandWindowInputted(command.Replace("{playerid}", player.CSteamID.m_SteamID.ToString().Replace("{playername}", player.CharacterName)), ref yes);
             }
-
-            if (Configuration.Instance.GlobalRewardAnnouncement) Say(Translations.Instance.Translate("vote_success_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
-            else Say(player, Instance.Translations.Instance.Translate("vote_success_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
+            if (bundle.OneTimeOnly)
+            {
+                if (Configuration.Instance.GlobalRewardAnnouncement) Say(Translations.Instance.Translate("vote_success_onetime_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
+                else Say(player, Instance.Translations.Instance.Translate("vote_success_onetime_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
+            }
+            else
+            {
+                if (Configuration.Instance.GlobalRewardAnnouncement) Say(Translations.Instance.Translate("vote_success_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
+                else Say(player, Instance.Translations.Instance.Translate("vote_success_message", player.CharacterName, definition.Name, bundle.Name), MsgColor, Configuration.Instance.MessageSuccessIconUrl);
+            }
         }
         internal void ForceReward(UnturnedPlayer player, string reward = "$$random$$")
         {
@@ -154,10 +245,10 @@ namespace fr34kyn01535.Votifier
                 }
 
                 // Experience Reward
-                player.Experience += bundle.Reward.Experiences;
+                if (bundle.Experiences != 0) player.Experience += bundle.Experiences;
 
                 // Item Reward
-                foreach (var item in bundle.Reward.Items)
+                foreach (var item in bundle.Items)
                 {
                     if (!player.GiveItem(item.ItemID, item.Amount))
                     {
@@ -166,7 +257,7 @@ namespace fr34kyn01535.Votifier
                 }
 
                 // Vehicle Reward
-                foreach (var vehicle in bundle.Reward.Vehicles)
+                foreach (var vehicle in bundle.Vehicles)
                 {
                     for (int i = 0; i < vehicle.Amount; i++)
                     {
@@ -186,7 +277,7 @@ namespace fr34kyn01535.Votifier
                 }
 
                 // Command Reward
-                foreach (var command in bundle.Reward.Commands)
+                foreach (var command in bundle.Commands)
                 {
                     bool yes = true;
                     CommandWindow.onCommandWindowInputted(command.Replace("{playerid}", player.CSteamID.m_SteamID.ToString().Replace("{playername}", player.CharacterName)), ref yes);
@@ -341,5 +432,18 @@ namespace fr34kyn01535.Votifier
         public bool giveItemDirectly;
         public string result;
         public VoteResult() { }
+    }
+    public class VPlayer
+    {
+        [XmlAttribute("SteamID")]
+        public ulong SteamID;
+        [XmlArray("OneTimeReward"), XmlArrayItem(ElementName = "Reward")]
+        public List<string> OneTimeReward;
+        public VPlayer() { }
+        public VPlayer(ulong steamId, List<string> oneTimeReward)
+        {
+            SteamID = steamId;
+            OneTimeReward = oneTimeReward;
+        }
     }
 }
